@@ -1,14 +1,51 @@
 "use strict";
+var player;
+
+$(document).ready(function(){
+	// Init canvas
+	GAME.canvas = $("#canvas")[0];
+	GAME.canvas.width = 800;
+	GAME.canvas.height = 800;
+
+	// Init context
+	GAME.ctx = GAME.canvas.getContext('2d');
+	GAME.ctx.font = '20px Press-Start-2P';
+	GAME.ctx.textBaseline = 'top';
+	GAME.ctx.imageSmoothingEnabled = false;
+
+	GAME.lastTime = Date.now();
+	GAME.bindInput();
+
+	// Init GAME objects
+	GAME.typewriter.init();
+
+	player = new Player();
+	GAME.objects = [player];
+	UI.init();
+	GAME.camera.init();
+
+	GAME.typewriter.display(['Welcome to Disparity RPG. To move use the awsd keys, and use the left mouse button to attack.']);
+	// Start loop
+	GAME.gameLoop();
+});
 
 var GAME = {
 	halt: false,
 	bindInput: function(){
-		// While a key is pressed down, return true
+		GAME.keys = [];
+		GAME.keys_is_held = [];
+		GAME.mouse_pos = new P(0,0);
+		GAME.mouse_click_pos = new P(0,0);
+		GAME.mouse_click_pos.isDown = false;
+		GAME.mouse_click_pos.isHeld = false;
 		window.addEventListener('keydown', function(e){
+			// keys_is_held only is true when it is in the first frame of a press
+			GAME.keys_is_held[e.keyCode] = GAME.keys[e.keyCode];
 			GAME.keys[e.keyCode] = true;
 		});
 		window.addEventListener('keyup', function(e){
 			GAME.keys[e.keyCode] = false;
+			GAME.keys_is_held[e.keyCode] = false;
 		});
 		window.addEventListener('mousemove', function(e){
 			var rect = GAME.canvas.getBoundingClientRect();
@@ -19,6 +56,11 @@ var GAME = {
 			var rect = GAME.canvas.getBoundingClientRect();
 			GAME.mouse_click_pos.x = e.clientX - rect.left;
 			GAME.mouse_click_pos.y = e.clientY - rect.top;
+			GAME.mouse_click_pos.isHeld = GAME.mouse_click_pos.isDown;
+			setTimeout(function() {
+				if (GAME.mouse_click_pos.isDown)
+					GAME.mouse_click_pos.isHeld = true;
+			}, GAME.delta * 1000);
 			GAME.mouse_click_pos.isDown = true;
 		});
 		window.addEventListener('mouseup', function(e){
@@ -26,14 +68,16 @@ var GAME = {
 			GAME.mouse_click_pos.x = e.clientX - rect.left;
 			GAME.mouse_click_pos.y = e.clientY - rect.top;
 			GAME.mouse_click_pos.isDown = false;
+			GAME.mouse_click_pos.isHeld = false;
 		});
 	},
 	handleInput: function(){
+		// Typewriter acts as an interrupt for all other input
 		if(this.typewriter.isDisplaying){
 			this.typewriter.handleInput();
 		}else{
-			player.handleInput();
 			UI.handleInput();
+			player.handleInput();
 		}
 	},
 	update: function(){
@@ -48,6 +92,13 @@ var GAME = {
 
 		this.camera.update();
 	},
+	/**
+	 * Game renders as a sort of double buffer state. The camera represents a current
+	 * window into the game. Every frame the entire game is rendered to the camera canvas,
+	 * then the camera canvas is rendered to the visible play canvas.
+	 *
+	 * UI is rendered directly to the play canvas, not the camera. Text will always be shown over everything else.
+	 */
 	render: function(){
 		GAME.map.render();
 		for(var gameobj in this.objects)
@@ -75,6 +126,9 @@ var GAME = {
 
 		GAME.lastTime = now;
 	},
+	/**
+	 * draw is a collection of auxillary functions for rendering to the Camera Canvas
+	 */
 	draw: {
 		fillBox: function(x, y, width, height, color){
 			GAME.camera.ctx.fillStyle = color;
@@ -97,6 +151,9 @@ var GAME = {
 			GAME.camera.ctx.drawImage(GAME.spritesheet, sx, sy, sw, sh, x - GAME.camera.x, y - GAME.camera.y, width, height);
 		}
 	},
+	/**
+	 * drawUI is a collection of auxillary functions for rendering to the Game Canvas
+	 */
 	drawUI: {
 		fillBox: function(x, y, width, height, color){
 			GAME.ctx.fillStyle = color;
@@ -146,9 +203,12 @@ var GAME = {
 			this.y = player.y - canvas.width/2;
 		},
 		update: function(){
+			// rectX & rectY represent the movement constraints of the camera
 			var rectX = 400;
 			var rectY = 400;
 			var speed = player.speed;
+
+			// Follow player when player is not center of camera
 			if(player.x - this.x > (canvas.width/2) + (rectX/2))
 				this.x += speed * GAME.delta;
 			if(player.x - this.x < (canvas.width/2) - (rectX/2))
@@ -157,6 +217,16 @@ var GAME = {
 				this.y += speed * GAME.delta;
 			if(player.y - this.y < (canvas.height/2) - (rectY/2))
 				this.y -= speed * GAME.delta;
+
+			// Lock camera around constraints of map
+			if (this.x < 0)
+				this.x = 0;
+			if (this.x > GAME.map.map_width - this.canvas.width)
+				this.x = GAME.map.map_width - this.canvas.width;
+			if (this.y < 0)
+				this.y = 0;
+			if (this.y > GAME.map.map_height - this.canvas.height)
+				this.y = GAME.map.map_height - this.canvas.height;
 		},
 		render: function(){
 			GAME.ctx.drawImage(this.canvas, 0, 0, GAME.canvas.width, GAME.canvas.height);
@@ -168,22 +238,41 @@ var GAME = {
 };
 
 GAME.map = {
+	map_width: 2000,
+	map_height: 2000,
+	tile_width: 50,
+	tile_height: 50,
 	tiles: [
-		new P(0,3),new P(1,3),new P(2,3),new P(3,3),new P(4,3),new P(5,3)
+		new P(0,3),new P(1,3),new P(2,3),new P(3,3),new P(4,3)
 	],
+	canEnterPointX(x, width) {
+		var isInsideMap = true;
+		var isInsideObject = false;
+		if (!(0 < x && x + width < this.map_width)) {
+			isInsideMap = false;
+		}
+		return isInsideMap && !isInsideObject;
+	},
+	canEnterPointY(y, height) {
+		var isInsideMap = true;
+		var isInsideObject = false;
+		if (!(0 < y && y + height < this.map_height)) {
+			isInsideMap = false;
+		}
+		return isInsideMap && !isInsideObject;
+	},
 	update: function() {
 		if (GAME.objects.length < 20) {
-			GAME.objects.push(new Slime(Math.random()*2000, Math.random()*2000));
+			GAME.objects.push(new Slime(Math.random()*this.map_width, Math.random()*this.map_height));
 		}
 	},
 	render: function() {
 		var tile = 0;
-		GAME.draw.box(-5, -5, 2010, 2010, "black", 5);
-		for (var x = 0; x < 5; x++) {
-			for (var y = 0; y < 5; y++) {
-				tile++;
+		for (var x = 0; x < this.map_width / this.tile_width; x++) {
+			for (var y = 0; y < this.map_height / this.tile_height; y++) {
+				tile = x + y;
 				tile %= this.tiles.length;
-				GAME.draw.sprite(this.tiles[tile], x*400, y*400, 50, 50);
+				GAME.draw.sprite(this.tiles[tile], x*this.tile_width, y*this.tile_height, this.tile_width, this.tile_height);
 			}
 		}
 	}
@@ -209,13 +298,13 @@ class Entity {
 		this.timer = 0;
 		this.STATE = {
 			REST: 0,
-			DAMAGED: 1
+			DAMAGED: 1,
+			DEAD: 2
 		};
 		this.state = this.STATE.REST;
 	}
 	attack (damage) {
-		if (this.state == this.STATE.DAMAGED) {
-			this.timer = 0;
+		if (this.state == this.STATE.DAMAGED || this.state == this.STATE.DEAD) {
 			return;
 		}
 		this.hp -= damage;
@@ -232,7 +321,7 @@ class Entity {
 			this.frame %= this.getAnimation().length;
 		this.timer = 0;
 	}
-	getAnimation () {/* Must be implemeneted per class. */ return [{x:0,y:0}];}
+	getAnimation () {/* Must be implemented per class. */ return [{x:0,y:0}];}
 	render () {
 		GAME.draw.sprite(this.getAnimation()[this.frame], this.x, this.y, this.width, this.height);
 		GAME.draw.fillBox(this.x, this.y, this.width, 2, "gray");
@@ -295,8 +384,8 @@ class Player extends Entity {
 		super(100, 100, 50, 50, 200, 30);
 
 		this.setClass('man', 'dagger');
-		this.STATE.RUN = 2;
-		this.STATE.ATTACK = 3;
+		this.STATE.RUN = 3;
+		this.STATE.ATTACK = 4;
 		this.state = this.STATE.REST;
 		this.isRight = true;
 		// Special Player Stuff
@@ -329,14 +418,18 @@ class Player extends Entity {
 		this.fireAttack = attacks[fireAttack];
 		switch(anim) {
 			case "thief":
-			this.damage*=2;
-			this.skills.speed += 1;
+			this.damage++;
+			this.skills.speed++;
 			this.mhp -= 5;
 			this.hp -= 5;
+			this.sp++;
+			UI.toggleSkillMenu();
 			break;
 			case "archer":
-			this.damage-=1;
-			this.skills.strength += 1;
+			this.damage--;
+			this.skills.strength++;
+			this.sp++;
+			UI.toggleSkillMenu();
 			break;
 		}
 	}
@@ -364,7 +457,7 @@ class Player extends Entity {
 			return;
 		}
 
-		if(GAME.mouse_click_pos.isDown  && (this.state != this.STATE.ATTACK)){
+		if(GAME.mouse_click_pos.isDown  && (!GAME.mouse_click_pos.isHeld && this.state != this.STATE.ATTACK)){
 			this.setState(this.STATE.ATTACK);
 			return;
 		}
@@ -400,20 +493,15 @@ class Player extends Entity {
 			}else if(this.down){
 				newY += this.speed * GAME.delta;
 			}
-
-
-			// Add 25 because we want to check the center of the
-			// player
-			// Move on x scale
 			
-			//if(MAP.canWalkAtPoint(this.hitbox))
-			this.hitbox.x = newX;
-			this.hitbox.y = newY;
-			this.x = newX;
-			this.y = newY;
-
-			// Move on y scale
-			//if(MAP.canWalkAtPoint(this.hitbox))
+			if (GAME.map.canEnterPointX(newX, this.width)) {
+				this.hitbox.x = newX;
+				this.x = newX;
+			}
+			if (GAME.map.canEnterPointY(newY, this.height)) {
+				this.y = newY;
+				this.hitbox.y = newY;
+			}
 		}
 		this.regenTimer += GAME.delta;
 		if (this.regenTimer > 5 - (this.skills.regen-1/10)) {
@@ -433,9 +521,11 @@ class Player extends Entity {
 		this.xp = 0;
 		this.level++;
 		this.hp = this.mhp;
-		this.sp++;
 		if (classmap[this.class].level == this.level) {
 			this.cp++;
+		} else {
+			this.sp++;
+			UI.toggleSkillMenu();
 		}
 	}
 	die () {
@@ -605,9 +695,10 @@ class Enemy extends Entity {
 		super(x, y, width, height, speed, mhp);
 		this.walkTimer = 0;
 		this.xp = xp;
-		this.STATE.DEAD = 2;
 		this.state = this.STATE.REST;
 		this.animations = animations;
+		this.AI = this.followAI;
+		this.followRadius = GAME.map.tile_width * 5;
 	}
 	getAnimation () {
 		return this.animations[this.state];
@@ -623,16 +714,23 @@ class Enemy extends Entity {
 		this.hitbox.x = this.x;
 		this.hitbox.y = this.y;
 
+		this.AI();
+		if (this.state == this.STATE.REST)
+			this.fireAttack();
+	}
+	followAI () {
 		if (this.state == this.STATE.REST){
 			this.walkTimer += GAME.delta;
-			this.x += this.speed * GAME.delta;
+			var newX = this.x + this.speed * GAME.delta;
+			if (GAME.map.canEnterPointX(newX, this.width))
+				this.x += this.speed * GAME.delta;
+			else
+				this.speed *= -1;
 		}
 		if (this.walkTimer > 20) {
 			this.speed *= -1;
 			this.walkTimer = 0;
 		}
-		if (this.state == this.STATE.REST)
-			this.fireAttack();
 	}
 	animate () {
 		switch(this.state){
@@ -692,6 +790,7 @@ GAME.typewriter = {
 		this.waitingSymbol = false;
 		this.timer = 0;
 		this.lineLength = 20;
+		this.speedDelta = 1;
 
 		this.cursor = {
 			x: 20,
@@ -711,7 +810,7 @@ GAME.typewriter = {
 	},
 	display: function(lines){
 		if(this.isDisplaying)
-			console.log('Already displaying text!');
+			console.log('Typewriter: Already displaying text!');
 
 		this.text = lines[0];
 		lines.shift();
@@ -764,7 +863,7 @@ GAME.typewriter = {
 		}
 	},
 	handleInput: function(){
-		if(this.waiting && (GAME.keys[key.enter] || GAME.mouse_click_pos.isDown)){
+		if(this.waiting && (GAME.keys[key.enter] && !GAME.keys_is_held[key.enter] || GAME.mouse_click_pos.isDown && !GAME.mouse_click_pos.isHeld)){
 			if(!this.hasNextLine()){
 				this.exit();
 				return;
@@ -775,11 +874,15 @@ GAME.typewriter = {
 			this.text = this.lines[0];
 			this.lines.shift();
 			this.waiting = false;
+		} else if (GAME.keys[key.enter] || GAME.mouse_click_pos.isDown) {
+			this.speedDelta = 25;
+		} else if (this.speedDelta == 25) {
+			this.speedDelta = 1;
 		}
 	},
 	update: function(){
 		if(this.isDisplaying){
-			this.timer += GAME.delta;
+			this.timer += GAME.delta * this.speedDelta;
 
 			if(this.shiftingUpwards && this.timer > .005){
 				this.shiftStep();
@@ -882,8 +985,7 @@ var UI = {
 	showSkillMenu: false,
 	init: function() {
 		this.buttons.push(this.button(270, 402, '+', "#2C6000", "#00cc00", function(){player.sp--;player.skills.strength++;}));
-		this.buttons.push(this.button(270, 432, '+', "#2C6000", "#00cc00", 
-		function(){
+		this.buttons.push(this.button(270, 432, '+', "#2C6000", "#00cc00", function(){
 			player.sp--;
 			player.skills.speed++;
 			player.speed = (player.skills.speed*20) + player.speed;
@@ -905,6 +1007,7 @@ var UI = {
 				UI.showSkillMenu = true;
 			}
 		});
+		UI.toggleSkillMenu = this.shrinkButton.action;
 		this.classbuttons.push(this.classbutton(10, 10, new P(1,6),'thief','dagger'));
 		this.classbuttons.push(this.classbutton(10, 120, new P(2,6),'archer','bow'));
 	},
@@ -982,7 +1085,7 @@ var UI = {
 		GAME.drawUI.centerText("Level " + player.level, 400, 730, "white");
 		this.shrinkButton.render();
 
-		if (player.sp > 0 || this.showSkillMenu) {
+		if (this.showSkillMenu) {
 			// Render the select skill point menu
 			GAME.drawUI.fillBox(15, 400, 290, 115, 'gray');
 			GAME.drawUI.box(15, 400, 290, 115, 'black', 1);
@@ -1003,35 +1106,3 @@ var UI = {
 		}
 	}
 };
-var player = new Player();
-
-$(document).ready(function(){
-	// Init canvas
-	GAME.canvas = $("#canvas")[0];
-	GAME.canvas.width = 800;
-	GAME.canvas.height = 800;
-
-	// Init context
-	GAME.ctx = GAME.canvas.getContext('2d');
-	GAME.ctx.font = '20px Press-Start-2P';
-	GAME.ctx.textBaseline = 'top';
-	GAME.ctx.imageSmoothingEnabled = false;
-
-	GAME.lastTime = Date.now();
-	GAME.keys = [];
-	GAME.mouse_pos = new P(0,0);
-	GAME.mouse_click_pos = new P(0,0);
-	GAME.mouse_click_pos.isDown = false;
-	GAME.bindInput();
-
-	// Init GAME objects
-	GAME.typewriter.init();
-
-	GAME.objects = [player];
-	UI.init();
-	GAME.camera.init();
-
-	GAME.typewriter.display(['Welcome.']);
-	// Start loop
-	GAME.gameLoop();
-});
