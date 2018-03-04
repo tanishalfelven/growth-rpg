@@ -698,7 +698,8 @@ class Enemy extends Entity {
 		this.state = this.STATE.REST;
 		this.animations = animations;
 		this.AI = this.followAI;
-		this.followRadius = GAME.map.tile_width * 5;
+		this.followRadius = GAME.map.tile_width * 3;
+		this.direction = 1;
 	}
 	getAnimation () {
 		return this.animations[this.state];
@@ -719,18 +720,43 @@ class Enemy extends Entity {
 			this.fireAttack();
 	}
 	followAI () {
-		if (this.state == this.STATE.REST){
-			this.walkTimer += GAME.delta;
-			var newX = this.x + this.speed * GAME.delta;
-			if (GAME.map.canEnterPointX(newX, this.width))
-				this.x += this.speed * GAME.delta;
-			else
-				this.speed *= -1;
+		if (this.state == this.STATE.REST) {
+			if (this.playerInRadius(this.followRadius)) {
+				var newX = this.x, newY = this.y;
+				if (player.x + player.width/2 > this.x + this.width) {
+					newX += this.speed * GAME.delta;
+				} else if (player.x + player.width/2 < this.x){
+					newX += -this.speed * GAME.delta;
+				}
+				if (player.y + player.height/2 > this.y + this.height){
+					newY += this.speed * GAME.delta;
+				} else if (player.y + player.height/2 < this.y) {
+					newY += -this.speed * GAME.delta;
+				}
+
+				if (GAME.map.canEnterPointX(newX, this.width)) {
+					this.x = newX;
+				}
+				if (GAME.map.canEnterPointY(newY, this.height)) {
+					this.y = newY;
+				}
+			} else {
+				this.walkTimer += GAME.delta;
+				var newX = this.x + (this.speed * GAME.delta * this.direction);
+				if (GAME.map.canEnterPointX(newX, this.width))
+					this.x = newX;
+				else
+					this.direction *= -1;
+			}
 		}
 		if (this.walkTimer > 20) {
-			this.speed *= -1;
+			this.direction *= -1;
 			this.walkTimer = 0;
 		}
+	}
+	playerInRadius(radius) {
+		return this.x - radius < player.x && player.x + player.width < this.x + this.width + radius
+			&& this.y - radius < player.y && player.y + player.height < this.y + this.height + radius;
 	}
 	animate () {
 		switch(this.state){
