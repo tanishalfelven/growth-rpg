@@ -536,6 +536,7 @@ class Player extends Entity {
 		this.level = 1;
 		this.xp = 0;
 		this.sp = 0;
+		this.cp = 0;
 		this.speed = 200;
 		this.skills = {
 			speed: 		1,
