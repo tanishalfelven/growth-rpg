@@ -902,8 +902,8 @@ GAME.typewriter = {
 			this.lines.shift();
 			this.waiting = false;
 		} else if (GAME.keys[key.enter] || GAME.mouse_click_pos.isDown) {
-			this.speedDelta = 25;
-		} else if (this.speedDelta == 25) {
+			this.speedDelta = 50;
+		} else if (this.speedDelta != 1) {
 			this.speedDelta = 1;
 		}
 	},
