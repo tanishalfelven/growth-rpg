@@ -305,6 +305,7 @@ class Entity {
 	}
 	attack (damage) {
 		if (this.state == this.STATE.DAMAGED || this.state == this.STATE.DEAD) {
+			console.log('!');
 			return;
 		}
 		this.hp -= damage;
@@ -453,13 +454,15 @@ class Player extends Entity {
 			this.down = true;
 		}
 
-		if (this.state == this.STATE.DAMAGED) {
+		var isDamaged = this.state == this.STATE.DAMAGED;
+
+		if(GAME.mouse_click_pos.isDown  && (!GAME.mouse_click_pos.isHeld && this.state != this.STATE.ATTACK) && this.state != this.STATE.DAMAGED){
+			this.setState(this.STATE.ATTACK);
 			return;
 		}
 
-		if(GAME.mouse_click_pos.isDown  && (!GAME.mouse_click_pos.isHeld && this.state != this.STATE.ATTACK)){
-			this.setState(this.STATE.ATTACK);
-			return;
+		if (this.state != this.STATE.DAMAGED && isDamaged) {
+			console.log('1')
 		}
 
 		this.isMoving = (this.right || this.up || this.left || this.down) && (this.state != this.STATE.ATTACK);
@@ -469,9 +472,17 @@ class Player extends Entity {
 			return;
 		}
 
-		if(this.isMoving && this.state != this.STATE.RUN){
+		if (this.state != this.STATE.DAMAGED && isDamaged) {
+			console.log('2')
+		}
+
+		if(this.isMoving && this.state != this.STATE.RUN && this.state != this.STATE.DAMAGED){
 			this.setState(this.STATE.RUN);
 			return;
+		}
+
+		if (this.state != this.STATE.DAMAGED && isDamaged) {
+			console.log('3')
 		}
 	}
 	update () {
@@ -479,7 +490,7 @@ class Player extends Entity {
 
 		this.animate();
 
-		if(this.isMoving && this.state != this.STATE.DAMAGED){
+		if(this.isMoving){
 			var newX = this.x;
 			var newY = this.y;
 			if(this.right){
@@ -568,12 +579,12 @@ class Player extends Entity {
 			}
 			break;
 		case this.STATE.REST:
-			if(this.timer > .5){
+			if(this.timer > .1){
 				this.resetAnimation();
 			}
 			break;
 		case this.STATE.DAMAGED:
-			if(this.timer > .1) {
+			if(this.timer > 5) {
 				this.resetAnimation(true);
 				if(this.frame > this.getAnimation().length-1){
 					this.setState(this.STATE.REST);
