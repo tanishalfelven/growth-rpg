@@ -462,7 +462,7 @@ class Player extends Entity {
 
 		this.isMoving = (this.right || this.up || this.left || this.down) && (this.state != this.STATE.ATTACK);
 
-		if(!this.isMoving && (this.state != this.STATE.REST && this.state != this.STATE.ATTACK)){
+		if(!this.isMoving && ![this.STATE.REST, this.STATE.ATTACK, this.STATE.DAMAGED].includes(this.state)){
 			this.setState(this.STATE.REST);
 			return;
 		}
@@ -529,6 +529,7 @@ class Player extends Entity {
 	die () {
 		this.x = 100; this.y = 100;
 		GAME.camera.reset();
+		this.state = this.STATE.REST;
 		this.mhp = 30;
 		this.hp = 30;
 		this.level = 1;
@@ -571,9 +572,9 @@ class Player extends Entity {
 			}
 			break;
 		case this.STATE.DAMAGED:
-			if(this.timer > 5) {
+			if(this.timer > .2) {
 				this.resetAnimation(true);
-				if(this.frame > this.getAnimation().length-1){
+				if(this.frame > this.getAnimation().length-1) {
 					this.setState(this.STATE.REST);
 				}
 			}
@@ -715,8 +716,6 @@ class Enemy extends Entity {
 		this.hitbox.y = this.y;
 
 		this.AI();
-		if (this.state == this.STATE.REST)
-			this.fireAttack();
 	}
 	followAI () {
 		if (this.state == this.STATE.REST) {
@@ -738,6 +737,11 @@ class Enemy extends Entity {
 				}
 				if (GAME.map.canEnterPointY(newY, this.height)) {
 					this.y = newY;
+				}
+
+				var hitbox = new Box(this.x, this.y, this.width, this.height);
+				if (hitbox.isCollidingWith(player.hitbox)) {
+					player.attack(this.damage);
 				}
 			} else {
 				this.walkTimer += GAME.delta;
@@ -791,13 +795,6 @@ class Enemy extends Entity {
 class Slime extends Enemy {
 	constructor(x, y) {
 		super(x, y, 30, 30, 50, 10, 5, animations.slime);
-	}
-	fireAttack () {
-		var offset = 5;
-		var w = new Box(this.x + offset, this.y + offset, this.width - (offset*2), this.height - (offset*2));
-		if (w.isCollidingWith(player.hitbox)) {
-			player.attack(this.damage);
-		}
 	}
 };
 
