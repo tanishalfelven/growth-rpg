@@ -305,7 +305,6 @@ class Entity {
 	}
 	attack (damage) {
 		if (this.state == this.STATE.DAMAGED || this.state == this.STATE.DEAD) {
-			console.log('!');
 			return;
 		}
 		this.hp -= damage;
@@ -461,10 +460,6 @@ class Player extends Entity {
 			return;
 		}
 
-		if (this.state != this.STATE.DAMAGED && isDamaged) {
-			console.log('1')
-		}
-
 		this.isMoving = (this.right || this.up || this.left || this.down) && (this.state != this.STATE.ATTACK);
 
 		if(!this.isMoving && (this.state != this.STATE.REST && this.state != this.STATE.ATTACK)){
@@ -472,17 +467,9 @@ class Player extends Entity {
 			return;
 		}
 
-		if (this.state != this.STATE.DAMAGED && isDamaged) {
-			console.log('2')
-		}
-
 		if(this.isMoving && this.state != this.STATE.RUN && this.state != this.STATE.DAMAGED){
 			this.setState(this.STATE.RUN);
 			return;
-		}
-
-		if (this.state != this.STATE.DAMAGED && isDamaged) {
-			console.log('3')
 		}
 	}
 	update () {
